@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    libpq-dev \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install solc-select
+RUN pip install solc-select && solc-select install 0.8.19 && solc-select use 0.8.19
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Download CodeBERT model at build time (avoids runtime download)
+RUN python -c "from transformers import AutoTokenizer, AutoModel; AutoTokenizer.from_pretrained('microsoft/codebert-base'); AutoModel.from_pretrained('microsoft/codebert-base')" || true
+
+COPY . .
+
+# Working directory for scan artifacts
+RUN mkdir -p /tmp/zauriscore-work
+
+CMD ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "-Q", "scans"]
